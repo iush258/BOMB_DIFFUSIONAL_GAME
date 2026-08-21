@@ -1,0 +1,192 @@
+/* Core Design Tokens & Global CSS */
+:root {
+  --bg-dark: #08090d;
+  --bg-card: rgba(18, 20, 28, 0.85);
+  --bg-card-border: rgba(255, 255, 255, 0.1);
+  --bg-subpanel: #11131a;
+  
+  --text-main: #f0f2f8;
+  --text-muted: #8b92a8;
+  
+  --color-red: #ff2e4c;
+  --color-red-glow: rgba(255, 46, 76, 0.5);
+  --color-orange: #ff6b00;
+  --color-gold: #ffb700;
+  --color-cyan: #00f0ff;
+  --color-green: #00ff66;
+  --color-green-glow: rgba(0, 255, 102, 0.4);
+
+  --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-digital: 'Orbitron', 'Share Tech Mono', monospace;
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-tech: 'Rajdhani', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* Glassmorphism Cards */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Utility Helpers */
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.flex-gap {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.text-red { color: var(--color-red); }
+.text-red-light { color: #ff5e75; }
+.text-orange { color: var(--color-orange); }
+.text-cyan { color: var(--color-cyan); }
+.text-gold { color: var(--color-gold); }
+.text-green { color: var(--color-green); }
+.text-muted { color: var(--text-muted); }
+
+.mono-font { font-family: var(--font-mono); }
+.highlight { color: #ffffff; font-weight: 700; }
+
+.margin-top-xs { margin-top: 6px; }
+.margin-top-sm { margin-top: 12px; }
+.margin-top-md { margin-top: 20px; }
+.margin-top-lg { margin-top: 32px; }
+.margin-bottom-xs { margin-bottom: 6px; }
+.margin-bottom-sm { margin-bottom: 12px; }
+.margin-bottom-md { margin-bottom: 20px; }
+.width-full { width: 100%; }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-family: var(--font-tech);
+  font-size: 1rem;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  text-decoration: none;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-cyan {
+  background: var(--color-cyan);
+  color: #000000;
+  font-weight: 700;
+}
+.btn-cyan:hover { background: #33f3ff; }
+
+.btn-danger {
+  background: linear-gradient(135deg, #ff2e4c, #c7001e);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px var(--color-red-glow);
+}
+.btn-danger:hover {
+  background: linear-gradient(135deg, #ff4d66, #e60021);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-outline-cyan {
+  background: transparent;
+  color: var(--color-cyan);
+  border: 1px solid var(--color-cyan);
+}
+.btn-outline-cyan:hover {
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.btn-outline-green {
+  background: transparent;
+  color: var(--color-green);
+  border: 1px solid var(--color-green);
+}
+.btn-outline-green:hover {
+  background: rgba(0, 255, 102, 0.1);
+}
+
+.btn-outline-red {
+  background: transparent;
+  color: var(--color-red);
+  border: 1px solid var(--color-red);
+}
+.btn-outline-red:hover {
+  background: rgba(255, 46, 76, 0.1);
+}
+
+.btn-lg {
+  padding: 14px 24px;
+  font-size: 1.15rem;
+}
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+/* Alert Banner */
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+}
+.alert-banner.warning {
+  background: rgba(255, 183, 0, 0.15);
+  border: 1px solid var(--color-gold);
+  color: #ffe066;
+}

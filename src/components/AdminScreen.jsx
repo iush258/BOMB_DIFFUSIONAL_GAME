@@ -1,0 +1,801 @@
+import React, { useState, useEffect } from 'react';
+import { subscribeToPath, writeData, pushData, readDataOnce, isFirebaseConfigured } from '../firebase';
+import { 
+  Bomb, 
+  Trophy, 
+  Play, 
+  RotateCcw, 
+  Plus, 
+  Trash2, 
+  AlertTriangle, 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  HelpCircle, 
+  Key, 
+  Layers, 
+  ShieldAlert,
+  Flame,
+  ArrowUp,
+  ArrowDown,
+  Sparkles,
+  Volume2,
+  Tv,
+  Eye,
+  EyeOff
+} from 'lucide-react';
+
+const PRESET_QUESTIONS = [
+  {
+    id: 'q1',
+    type: 'mcq',
+    question: 'Which protocol is used for real-time web socket communication in modern apps?',
+    options: ['WSS (WebSocket Secure)', 'FTP', 'SMTP', 'POP3'],
+    correctAnswer: 'WSS (WebSocket Secure)'
+  },
+  {
+    id: 'q2',
+    type: 'text',
+    question: 'What is the default port for HTTP traffic?',
+    correctAnswer: '80'
+  },
+  {
+    id: 'q3',
+    type: 'mcq',
+    question: 'In CS:GO / Counter-Strike, what is the default bomb defusal code?',
+    options: ['7355608', '1337420', '8675309', '0000000'],
+    correctAnswer: '7355608'
+  }
+];
+
+export default function AdminScreen() {
+  const [session, setSession] = useState(null);
+  const [leaderboard, setLeaderboard] = useState([]);
+  
+  // Setup Form State
+  const [teamName, setTeamName] = useState('');
+  const [timerMinutes, setTimerMinutes] = useState(5);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  
+  const [pinEnabled, setPinEnabled] = useState(true);
+  const [questionsEnabled, setQuestionsEnabled] = useState(true);
+  const [modeOrder, setModeOrder] = useState('questions_then_pin'); // 'questions_then_pin' or 'pin_then_questions'
+  const [maxStrikes, setMaxStrikes] = useState(3);
+  
+  const [pinCode, setPinCode] = useState('7355');
+  const [pinHint, setPinHint] = useState('Year of the first microprocessor (Intel 4004)');
+
+  const [questions, setQuestions] = useState(PRESET_QUESTIONS);
+
+  // New Question Form State
+  const [showAddQuestion, setShowAddQuestion] = useState(false);
+  const [qText, setQText] = useState('');
+  const [qType, setQType] = useState('mcq'); // 'mcq' or 'text'
+  const [qOptions, setQOptions] = useState(['', '', '', '']);
+  const [qCorrectMcq, setQCorrectMcq] = useState(0);
+  const [qCorrectText, setQCorrectText] = useState('');
+
+  // Live Dashboard Security State
+  const [showAdminPin, setShowAdminPin] = useState(false);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState('setup'); // 'setup', 'dashboard', 'leaderboard'
+
+  // Subscribe to currentSession and leaderboard from Firebase
+  useEffect(() => {
+    const unsubSession = subscribeToPath('currentSession', (val) => {
+      setSession(val);
+    });
+
+    const unsubLeaderboard = subscribeToPath('leaderboard', (val) => {
+      if (!val) {
+        setLeaderboard([]);
+        return;
+      }
+      const list = Array.isArray(val) ? val : Object.values(val);
+      list.sort((a, b) => {
+        if (a.result === 'defused' && b.result !== 'defused') return -1;
+        if (a.result !== 'defused' && b.result === 'defused') return 1;
+        if (a.timeTakenSeconds !== b.timeTakenSeconds) return a.timeTakenSeconds - b.timeTakenSeconds;
+        return a.attemptsUsed - b.attemptsUsed;
+      });
+      setLeaderboard(list);
+    });
+
+    return () => {
+      unsubSession();
+      unsubLeaderboard();
+    };
+  }, []);
+
+  const handleAddQuestion = (e) => {
+    e.preventDefault();
+    if (!qText.trim()) return;
+
+    let newQ = {
+      id: 'q_' + Date.now(),
+      type: qType,
+      question: qText.trim()
+    };
+
+    if (qType === 'mcq') {
+      const cleanOpts = qOptions.map(o => o.trim()).filter(Boolean);
+      if (cleanOpts.length < 2) {
+        alert('MCQ must have at least 2 non-empty options!');
+        return;
+      }
+      newQ.options = cleanOpts;
+      newQ.correctAnswer = cleanOpts[qCorrectMcq] || cleanOpts[0];
+    } else {
+      if (!qCorrectText.trim()) {
+        alert('Please specify the correct text answer!');
+        return;
+      }
+      newQ.correctAnswer = qCorrectText.trim();
+    }
+
+    setQuestions([...questions, newQ]);
+    setQText('');
+    setQOptions(['', '', '', '']);
+    setQCorrectText('');
+    setShowAddQuestion(false);
+  };
+
+  const handleRemoveQuestion = (id) => {
+    setQuestions(questions.filter(q => q.id !== id));
+  };
+
+  const handleMoveQuestion = (index, direction) => {
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const list = [...questions];
+    const temp = list[index];
+    list[index] = list[target];
+    list[target] = temp;
+    setQuestions(list);
+  };
+
+  const handleGenerateJoinCode = async () => {
+    if (!teamName.trim()) {
+      alert('Please enter Team/Player Name!');
+      return;
+    }
+    if (!pinEnabled && !questionsEnabled) {
+      alert('Please select at least one Defuse Mode (PIN or Questions)!');
+      return;
+    }
+    if (pinEnabled && !pinCode.trim()) {
+      alert('Please enter a valid numeric PIN code!');
+      return;
+    }
+    if (questionsEnabled && questions.length === 0) {
+      alert('Please add at least one question for Questions Mode!');
+      return;
+    }
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const durationSec = (parseInt(timerMinutes) || 0) * 60 + (parseInt(timerSeconds) || 0);
+
+    const newSession = {
+      // A unique id lets clients distinguish this round from every previous
+      // one, even if an old database update reaches them late.
+      id: `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      joinCode: code,
+      status: 'waiting_for_join',
+      teamName: teamName.trim(),
+      timerDurationSeconds: durationSec,
+      timeRemainingSeconds: durationSec,
+      diffuseMode: {
+        pin: pinEnabled,
+        questions: questionsEnabled
+      },
+      modeOrder,
+      maxStrikes: parseInt(maxStrikes) || 0,
+      pin: {
+        code: pinCode.trim(),
+        hint: pinHint.trim()
+      },
+      questions: questionsEnabled ? questions : [],
+      progress: {
+        questionsSolved: 0,
+        attemptsUsed: 0,
+        currentQuestionIndex: 0
+      },
+      result: 'pending',
+      createdAt: Date.now()
+    };
+
+    await writeData('currentSession', newSession);
+    setShowAdminPin(false);
+    setActiveTab('dashboard');
+  };
+
+  const handleForceDefuse = async () => {
+    if (!session) return;
+    const timeTaken = session.timerDurationSeconds - session.timeRemainingSeconds;
+    const updated = {
+      ...session,
+      status: 'defused',
+      result: 'defused',
+      endedAt: Date.now()
+    };
+    await writeData('currentSession', updated);
+
+    await pushData('leaderboard', {
+      teamName: session.teamName,
+      questionsSolved: session.progress?.questionsSolved || 0,
+      totalQuestions: session.questions?.length || 0,
+      attemptsUsed: session.progress?.attemptsUsed || 0,
+      timeTakenSeconds: timeTaken,
+      timerDurationSeconds: session.timerDurationSeconds,
+      result: 'defused',
+      timestamp: Date.now()
+    });
+  };
+
+  const handleForceDetonate = async () => {
+    if (!session) return;
+    const timeTaken = session.timerDurationSeconds - session.timeRemainingSeconds;
+    const updated = {
+      ...session,
+      status: 'detonated',
+      result: 'detonated',
+      endedAt: Date.now()
+    };
+    await writeData('currentSession', updated);
+
+    await pushData('leaderboard', {
+      teamName: session.teamName,
+      questionsSolved: session.progress?.questionsSolved || 0,
+      totalQuestions: session.questions?.length || 0,
+      attemptsUsed: session.progress?.attemptsUsed || 0,
+      timeTakenSeconds: timeTaken,
+      timerDurationSeconds: session.timerDurationSeconds,
+      result: 'detonated',
+      timestamp: Date.now()
+    });
+  };
+
+  const handleResetSession = async () => {
+    if (window.confirm('Reset current session? This will allow creating a new round.')) {
+      await writeData('currentSession', null);
+      setActiveTab('setup');
+    }
+  };
+
+  const handleClearLeaderboard = async () => {
+    if (window.confirm('Are you sure you want to CLEAR the entire leaderboard history?')) {
+      await writeData('leaderboard', []);
+    }
+  };
+
+  const formatTime = (totalSeconds) => {
+    if (isNaN(totalSeconds) || totalSeconds < 0) return '00:00';
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  return (
+    <div className="admin-container">
+      {/* Header Bar */}
+      <header className="admin-header">
+        <div className="admin-logo">
+          <Bomb className="logo-icon text-red" size={32} />
+          <div>
+            <h1>BOMB DEFUSAL CHALLENGE</h1>
+            <p className="subtitle">CONTROL ROOM & PROJECTOR COMMAND CENTER</p>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <nav className="admin-nav">
+          <button 
+            className={`nav-btn ${activeTab === 'setup' ? 'active' : ''}`}
+            onClick={() => setActiveTab('setup')}
+          >
+            <Play size={18} /> Setup Round
+          </button>
+          <button 
+            className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <Tv size={18} /> Live Dashboard
+            {session && session.status === 'active' && (
+              <span className="live-pulse">ARMED</span>
+            )}
+          </button>
+          <button 
+            className={`nav-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('leaderboard')}
+          >
+            <Trophy size={18} /> Leaderboard ({leaderboard.length})
+          </button>
+        </nav>
+      </header>
+
+      {!isFirebaseConfigured && (
+        <div className="alert-banner warning">
+          <AlertTriangle size={20} />
+          <div>
+            <strong>Firebase Not Connected (Local Fallback Active):</strong> Running in local browser sync mode. To sync across different physical mobile phones over Wi-Fi, add your Firebase keys in <code>.env.local</code>.
+          </div>
+        </div>
+      )}
+
+      {/* TAB 1: SETUP PANEL */}
+      {activeTab === 'setup' && (
+        <div className="setup-panel-grid">
+          {/* Main Setup Config */}
+          <div className="glass-card setup-card">
+            <h2 className="card-title">
+              <Layers size={22} className="text-orange" /> Round Configuration
+            </h2>
+
+            <div className="form-group">
+              <label>Team / Player Name</label>
+              <input 
+                type="text" 
+                className="input-field" 
+                placeholder="e.g. Cyber Squad 404"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group half">
+                <label>Timer Duration (Minutes)</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="59"
+                  className="input-field" 
+                  value={timerMinutes}
+                  onChange={(e) => setTimerMinutes(e.target.value)}
+                />
+              </div>
+              <div className="form-group half">
+                <label>Timer Duration (Seconds)</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="59"
+                  className="input-field" 
+                  value={timerSeconds}
+                  onChange={(e) => setTimerSeconds(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Max Wrong Attempts (Strikes) Allowed</label>
+              <select 
+                className="input-field"
+                value={maxStrikes}
+                onChange={(e) => setMaxStrikes(e.target.value)}
+              >
+                <option value={1}>1 Strike (Hardcore - Immediate detonation on 1 wrong)</option>
+                <option value={2}>2 Strikes</option>
+                <option value={3}>3 Strikes (Standard)</option>
+                <option value={5}>5 Strikes (Forgiving)</option>
+                <option value={0}>Unlimited Strikes (Timer limit only)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Defuse Modes Active</label>
+              <div className="checkbox-group">
+                <label className="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    checked={questionsEnabled} 
+                    onChange={(e) => setQuestionsEnabled(e.target.checked)}
+                  />
+                  <span>Questions Mode</span>
+                </label>
+                <label className="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    checked={pinEnabled} 
+                    onChange={(e) => setPinEnabled(e.target.checked)}
+                  />
+                  <span>PIN Keypad Mode</span>
+                </label>
+              </div>
+            </div>
+
+            {questionsEnabled && pinEnabled && (
+              <div className="form-group">
+                <label>Stage Sequence Order</label>
+                <select 
+                  className="input-field"
+                  value={modeOrder}
+                  onChange={(e) => setModeOrder(e.target.value)}
+                >
+                  <option value="questions_then_pin">1st Questions → 2nd Final PIN Entry (Recommended)</option>
+                  <option value="pin_then_questions">1st Keypad PIN → 2nd Questions</option>
+                </select>
+              </div>
+            )}
+
+            {/* PIN Settings */}
+            {pinEnabled && (
+              <div className="sub-panel border-orange">
+                <h3 className="sub-title"><Key size={18} /> PIN Configuration</h3>
+                <div className="form-group">
+                  <label>Numeric PIN Code</label>
+                  <input 
+                    type="text" 
+                    className="input-field mono-font" 
+                    placeholder="e.g. 7355608"
+                    value={pinCode}
+                    onChange={(e) => setPinCode(e.target.value.replace(/[^0-9]/g, ''))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>PIN Hint Text (Displayed on Mobile screen)</label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    placeholder="e.g. Standard CS:GO defusal code"
+                    value={pinHint}
+                    onChange={(e) => setPinHint(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            <button 
+              className="btn btn-danger btn-lg width-full margin-top-md"
+              onClick={handleGenerateJoinCode}
+            >
+              <Flame size={24} /> GENERATE JOIN CODE & ARM BOMB
+            </button>
+          </div>
+
+          {/* Questions Builder Card */}
+          <div className="glass-card questions-card">
+            <div className="flex-between">
+              <h2 className="card-title">
+                <HelpCircle size={22} className="text-cyan" /> Questions Bank ({questions.length})
+              </h2>
+              <button 
+                className="btn btn-outline-cyan btn-sm"
+                onClick={() => setQuestions(PRESET_QUESTIONS)}
+                title="Load sample tech festival questions"
+              >
+                <Sparkles size={16} /> Load Tech Preset
+              </button>
+            </div>
+
+            {/* Added Questions List */}
+            <div className="questions-scroll-list">
+              {questions.length === 0 ? (
+                <div className="empty-state">No questions added yet. Click below to add.</div>
+              ) : (
+                questions.map((q, idx) => (
+                  <div key={q.id || idx} className="question-item">
+                    <div className="q-badge">{idx + 1}</div>
+                    <div className="q-content">
+                      <div className="q-text">{q.question}</div>
+                      <div className="q-meta">
+                        <span className="badge badge-outline">{q.type.toUpperCase()}</span>
+                        <span className="q-answer">Answer: {q.correctAnswer}</span>
+                      </div>
+                    </div>
+                    <div className="q-actions">
+                      <button onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0} className="icon-btn">
+                        <ArrowUp size={14} />
+                      </button>
+                      <button onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === questions.length - 1} className="icon-btn">
+                        <ArrowDown size={14} />
+                      </button>
+                      <button onClick={() => handleRemoveQuestion(q.id)} className="icon-btn text-red">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Add Question Button / Form */}
+            {!showAddQuestion ? (
+              <button 
+                className="btn btn-secondary width-full margin-top-sm"
+                onClick={() => setShowAddQuestion(true)}
+              >
+                <Plus size={18} /> Add New Question
+              </button>
+            ) : (
+              <form onSubmit={handleAddQuestion} className="sub-panel border-cyan margin-top-sm">
+                <div className="flex-between margin-bottom-xs">
+                  <h3 className="sub-title">New Question Details</h3>
+                  <button type="button" className="btn-close" onClick={() => setShowAddQuestion(false)}>×</button>
+                </div>
+
+                <div className="form-group">
+                  <label>Question Text</label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    placeholder="Enter question prompt..."
+                    value={qText}
+                    onChange={(e) => setQText(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Question Type</label>
+                  <div className="radio-toggle">
+                    <button 
+                      type="button" 
+                      className={`toggle-btn ${qType === 'mcq' ? 'active' : ''}`}
+                      onClick={() => setQType('mcq')}
+                    >
+                      Multiple Choice (MCQ)
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`toggle-btn ${qType === 'text' ? 'active' : ''}`}
+                      onClick={() => setQType('text')}
+                    >
+                      Type-the-Answer
+                    </button>
+                  </div>
+                </div>
+
+                {qType === 'mcq' ? (
+                  <div className="form-group">
+                    <label>MCQ Options (Select the correct radio button)</label>
+                    {qOptions.map((opt, i) => (
+                      <div key={i} className="mcq-option-row">
+                        <input 
+                          type="radio" 
+                          name="correctMcq" 
+                          checked={qCorrectMcq === i}
+                          onChange={() => setQCorrectMcq(i)}
+                        />
+                        <input 
+                          type="text" 
+                          className="input-field" 
+                          placeholder={`Option ${i + 1}`}
+                          value={opt}
+                          onChange={(e) => {
+                            const updated = [...qOptions];
+                            updated[i] = e.target.value;
+                            setQOptions(updated);
+                          }}
+                          required
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label>Correct Answer Text (Case-insensitive)</label>
+                    <input 
+                      type="text" 
+                      className="input-field" 
+                      placeholder="e.g. 80 or TCP"
+                      value={qCorrectText}
+                      onChange={(e) => setQCorrectText(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="flex-gap margin-top-sm">
+                  <button type="submit" className="btn btn-cyan flex-1">Save Question</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowAddQuestion(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: LIVE DASHBOARD */}
+      {activeTab === 'dashboard' && (
+        <div className="dashboard-grid">
+          {!session ? (
+            <div className="glass-card empty-dashboard">
+              <ShieldAlert size={64} className="text-muted margin-bottom-sm" />
+              <h2>No Active Game Session</h2>
+              <p>Go to the <strong>Setup Round</strong> tab to configure and generate a join code for the next competing team.</p>
+              <button className="btn btn-cyan margin-top-md" onClick={() => setActiveTab('setup')}>
+                Go to Setup Panel
+              </button>
+            </div>
+          ) : (
+            <div className="dashboard-content">
+              {/* Top Banner: Big Join Code & Status */}
+              <div className="glass-card join-code-card">
+                <div className="code-box">
+                  <span className="code-label">MOBILE PAIRING JOIN CODE</span>
+                  <div className="big-join-code">{session.joinCode}</div>
+                  <span className="code-hint">Team enters this on phone app at <code>/bomb</code></span>
+                </div>
+
+                <div className="session-status-badge">
+                  <span className="status-label">STATUS</span>
+                  <div className={`status-tag status-${session.status}`}>
+                    {session.status === 'waiting_for_join' && 'WAITING FOR PLAYER TO CONNECT'}
+                    {session.status === 'active' && '🔴 BOMB ARMED & TICKING'}
+                    {session.status === 'defused' && '🟢 DEFUSED SUCCESSFUL'}
+                    {session.status === 'detonated' && '💥 BOMB DETONATED'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Live Telemetry Grid */}
+              <div className="telemetry-grid">
+                {/* Big Live Digital Timer */}
+                <div className="glass-card telemetry-card timer-telemetry">
+                  <div className="card-header">
+                    <Clock size={20} className="text-red" /> LIVE SYNCED TIMER
+                  </div>
+                  <div className={`digital-timer-display ${session.timeRemainingSeconds <= 30 ? 'urgent' : ''}`}>
+                    {formatTime(session.timeRemainingSeconds)}
+                  </div>
+                  <div className="timer-meta">
+                    Total Duration: {formatTime(session.timerDurationSeconds)}
+                  </div>
+                </div>
+
+                {/* Team Info & Progress */}
+                <div className="glass-card telemetry-card">
+                  <div className="card-header">
+                    <Bomb size={20} className="text-orange" /> ACTIVE TEAM METRICS
+                  </div>
+                  
+                  <div className="metric-row">
+                    <span className="metric-label">Competing Team:</span>
+                    <span className="metric-value highlight">{session.teamName}</span>
+                  </div>
+
+                  {session.diffuseMode?.questions && (
+                    <div className="metric-row">
+                      <span className="metric-label">Questions Solved:</span>
+                      <span className="metric-value">
+                        {session.progress?.questionsSolved || 0} / {session.questions?.length || 0}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="metric-row">
+                    <span className="metric-label">Wrong Attempts / Strikes:</span>
+                    <span className="metric-value text-red">
+                      {session.progress?.attemptsUsed || 0} {session.maxStrikes > 0 ? `/ ${session.maxStrikes}` : ''}
+                    </span>
+                  </div>
+
+                  {/* Masked Target PIN Code for Projector Security */}
+                  {session.diffuseMode?.pin && (
+                    <div className="metric-row">
+                      <span className="metric-label">Target PIN Code:</span>
+                      <div className="flex-gap">
+                        <span className="metric-value mono-font text-orange">
+                          {showAdminPin ? session.pin?.code : '••••••••'}
+                        </span>
+                        <button 
+                          type="button" 
+                          className="icon-btn text-muted"
+                          onClick={() => setShowAdminPin(!showAdminPin)}
+                          title={showAdminPin ? "Hide PIN Code on Projector" : "Reveal PIN Code for Admin"}
+                        >
+                          {showAdminPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Override Controls */}
+                  <div className="admin-overrides margin-top-md">
+                    <span className="section-label">ADMIN HOST OVERRIDES</span>
+                    <div className="flex-gap margin-top-xs">
+                      <button 
+                        className="btn btn-sm btn-outline-green" 
+                        onClick={handleForceDefuse}
+                        disabled={session.status === 'defused' || session.status === 'detonated'}
+                      >
+                        <CheckCircle2 size={16} /> Force Defuse
+                      </button>
+                      <button 
+                        className="btn btn-sm btn-outline-red" 
+                        onClick={handleForceDetonate}
+                        disabled={session.status === 'defused' || session.status === 'detonated'}
+                      >
+                        <XCircle size={16} /> Force Detonate
+                      </button>
+                      <button className="btn btn-sm btn-secondary" onClick={handleResetSession}>
+                        <RotateCcw size={16} /> End & Reset
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: LEADERBOARD */}
+      {activeTab === 'leaderboard' && (
+        <div className="leaderboard-panel glass-card">
+          <div className="flex-between margin-bottom-md">
+            <div>
+              <h2 className="card-title">
+                <Trophy size={26} className="text-gold" /> OFFICIAL EVENT LEADERBOARD
+              </h2>
+              <p className="subtitle">Persistent standings across all competing teams</p>
+            </div>
+
+            <div className="flex-gap">
+              <button className="btn btn-cyan" onClick={() => setActiveTab('setup')}>
+                <Plus size={18} /> Start Next Team Round
+              </button>
+              {leaderboard.length > 0 && (
+                <button className="btn btn-outline-red btn-sm" onClick={handleClearLeaderboard}>
+                  <Trash2 size={16} /> Clear History
+                </button>
+              )}
+            </div>
+          </div>
+
+          {leaderboard.length === 0 ? (
+            <div className="empty-state margin-top-lg">
+              <Trophy size={48} className="text-muted margin-bottom-sm" />
+              <h3>No Round Results Recorded Yet</h3>
+              <p>Complete a team round to automatically record scores to the leaderboard.</p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>RANK</th>
+                    <th>TEAM NAME</th>
+                    <th>RESULT</th>
+                    <th>QUESTIONS SOLVED</th>
+                    <th>WRONG ATTEMPTS</th>
+                    <th>TIME TAKEN</th>
+                    <th>DATE & TIME</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((row, idx) => (
+                    <tr key={row.id || idx} className={`rank-row ${idx === 0 ? 'top-rank' : ''}`}>
+                      <td className="rank-cell">
+                        {idx === 0 ? '🥇 1st' : idx === 1 ? '🥈 2nd' : idx === 2 ? '🥉 3rd' : `#${idx + 1}`}
+                      </td>
+                      <td className="team-cell">{row.teamName}</td>
+                      <td>
+                        <span className={`result-tag ${row.result}`}>
+                          {row.result === 'defused' ? 'DEFUSED' : 'DETONATED'}
+                        </span>
+                      </td>
+                      <td>{row.questionsSolved} / {row.totalQuestions || '-'}</td>
+                      <td className="text-red-light">{row.attemptsUsed}</td>
+                      <td className="mono-font highlight">{formatTime(row.timeTakenSeconds)}</td>
+                      <td className="text-muted text-sm">
+                        {row.timestamp ? new Date(row.timestamp).toLocaleTimeString() : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

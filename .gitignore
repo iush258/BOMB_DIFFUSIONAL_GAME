@@ -1,0 +1,12 @@
+# Dependencies and generated builds
+node_modules/
+dist/
+
+# Local environment values (never commit these)
+.env.local
+.env.*.local
+
+# Operating-system and editor files
+.DS_Store
+*.log
+.vscode/
