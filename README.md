@@ -19,6 +19,17 @@ A two-screen React and Firebase game for an event:
 - npm
 - A Firebase project with **Realtime Database** enabled for multi-device use
 
+## Set up Google Firebase
+
+Complete these steps before running the app with multiple devices:
+
+1. Open the [Firebase Console](https://console.firebase.google.com/) and click **Create a project** (or select an existing project).
+2. In the project overview, click the **Web** icon (`</>`) to add a web app. Register the app with any nickname. Firebase Hosting is not required for this step.
+3. Open **Build → Realtime Database**, click **Create database**, choose a database location, and continue with **Start in locked mode**. The temporary event rules are provided below.
+4. Open **Project settings** using the gear icon, scroll to **Your apps**, select the web app, and choose **Config** under the Firebase SDK setup.
+5. Copy the values from the `firebaseConfig` object into a new `.env.local` file. Use the matching `VITE_FIREBASE_*` names shown below. Do not commit this file.
+6. In **Realtime Database → Rules**, use rules appropriate for the event. For a short, supervised event, the temporary rules in [Firebase security note](#firebase-security-note) allow the app to synchronize between devices. Publish the rules after reviewing them.
+
 ## Run locally
 
 1. Install packages:
@@ -33,7 +44,7 @@ A two-screen React and Firebase game for an event:
    cp .env.example .env.local
    ```
 
-3. In the Firebase console, create or select a project, add a **Web app**, enable **Realtime Database**, then copy its configuration into `.env.local`:
+3. Confirm that `.env.local` contains the Firebase configuration from the [Google Firebase setup](#set-up-google-firebase) steps:
 
    ```env
    VITE_FIREBASE_API_KEY=your_api_key_here
