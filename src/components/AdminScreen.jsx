@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { subscribeToPath, writeData, pushData, readDataOnce, isFirebaseConfigured } from '../firebase';
+import { importQuestionsCsv, importTeamsCsv } from '../utils/csvImport';
 import { 
   Bomb, 
   Trophy, 
@@ -26,22 +27,22 @@ import {
   Lightbulb
 } from 'lucide-react';
 
-const PRESET_QUESTIONS = [
+const SAMPLE_QUESTIONS = [
   {
-    id: 'q1',
+    id: 'sample_q1',
     type: 'mcq',
     question: 'Which protocol is used for real-time web socket communication in modern apps?',
     options: ['WSS (WebSocket Secure)', 'FTP', 'SMTP', 'POP3'],
     correctAnswer: 'WSS (WebSocket Secure)'
   },
   {
-    id: 'q2',
+    id: 'sample_q2',
     type: 'text',
     question: 'What is the default port for HTTP traffic?',
     correctAnswer: '80'
   },
   {
-    id: 'q3',
+    id: 'sample_q3',
     type: 'mcq',
     question: 'In CS:GO / Counter-Strike, what is the default bomb defusal code?',
     options: ['7355608', '1337420', '8675309', '0000000'],
@@ -52,9 +53,12 @@ const PRESET_QUESTIONS = [
 export default function AdminScreen() {
   const [session, setSession] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [importError, setImportError] = useState('');
   
   // Setup Form State
   const [teamName, setTeamName] = useState('');
+  const [manualTeamName, setManualTeamName] = useState('');
   const [timerMinutes, setTimerMinutes] = useState(5);
   const [timerSeconds, setTimerSeconds] = useState(0);
   
@@ -66,15 +70,44 @@ export default function AdminScreen() {
   const [pinCode, setPinCode] = useState('7355');
   const [pinHint, setPinHint] = useState('Year of the first microprocessor (Intel 4004)');
 
-  const [questions, setQuestions] = useState(PRESET_QUESTIONS);
+  const [questions, setQuestions] = useState([]);
 
-  // New Question Form State
-  const [showAddQuestion, setShowAddQuestion] = useState(false);
-  const [qText, setQText] = useState('');
-  const [qType, setQType] = useState('mcq'); // 'mcq' or 'text'
-  const [qOptions, setQOptions] = useState(['', '', '', '']);
-  const [qCorrectMcq, setQCorrectMcq] = useState(0);
-  const [qCorrectText, setQCorrectText] = useState('');
+  const handleCsvImport = (event, importer, onSuccess) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        onSuccess(importer(String(reader.result || '')));
+        setImportError('');
+      } catch (error) {
+        setImportError(error.message);
+      }
+      event.target.value = '';
+    };
+    reader.onerror = () => {
+      setImportError(`Could not read ${file.name}.`);
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const handleTeamsImport = (event) => {
+    handleCsvImport(event, importTeamsCsv, (importedTeams) => {
+      setTeams((currentTeams) => [...new Set([...currentTeams, ...importedTeams])]);
+      setTeamName((currentTeam) => currentTeam || importedTeams[0]);
+    });
+  };
+
+  const handleQuestionsImport = (event) => {
+    handleCsvImport(event, importQuestionsCsv, setQuestions);
+  };
+
+  const handleLoadSampleQuestions = () => {
+    setQuestions(SAMPLE_QUESTIONS.map((question) => ({ ...question })));
+    setImportError('');
+  };
 
   // Live Dashboard Security State
   const [showAdminPin, setShowAdminPin] = useState(false);
@@ -109,41 +142,13 @@ export default function AdminScreen() {
     };
   }, []);
 
-  const handleAddQuestion = (e) => {
-    e.preventDefault();
-    if (!qText.trim()) return;
-
-    let newQ = {
-      id: 'q_' + Date.now(),
-      type: qType,
-      question: qText.trim()
-    };
-
-    if (qType === 'mcq') {
-      const cleanOpts = qOptions.map(o => o.trim()).filter(Boolean);
-      if (cleanOpts.length < 2) {
-        alert('MCQ must have at least 2 non-empty options!');
-        return;
-      }
-      newQ.options = cleanOpts;
-      newQ.correctAnswer = cleanOpts[qCorrectMcq] || cleanOpts[0];
-    } else {
-      if (!qCorrectText.trim()) {
-        alert('Please specify the correct text answer!');
-        return;
-      }
-      newQ.correctAnswer = qCorrectText.trim();
-    }
-
-    setQuestions([...questions, newQ]);
-    setQText('');
-    setQOptions(['', '', '', '']);
-    setQCorrectText('');
-    setShowAddQuestion(false);
-  };
-
   const handleRemoveQuestion = (id) => {
     setQuestions(questions.filter(q => q.id !== id));
+  };
+
+  const handleRemoveTeam = (teamToRemove) => {
+    setTeams((currentTeams) => currentTeams.filter((team) => team !== teamToRemove));
+    setTeamName((currentTeam) => currentTeam === teamToRemove ? '' : currentTeam);
   };
 
   const handleMoveQuestion = (index, direction) => {
@@ -157,8 +162,9 @@ export default function AdminScreen() {
   };
 
   const handleGenerateJoinCode = async () => {
-    if (!teamName.trim()) {
-      alert('Please enter Team/Player Name!');
+    const selectedTeamName = teamName.trim() || manualTeamName.trim();
+    if (!selectedTeamName) {
+      alert('Please select an imported team or enter a team name manually!');
       return;
     }
     if (!pinEnabled && !questionsEnabled) {
@@ -188,7 +194,7 @@ export default function AdminScreen() {
       id: `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       joinCode: code,
       status: 'waiting_for_join',
-      teamName: teamName.trim(),
+      teamName: selectedTeamName,
       timerDurationSeconds: durationSec,
       timeRemainingSeconds: durationSec,
       diffuseMode: {
@@ -292,7 +298,7 @@ export default function AdminScreen() {
         <div className="admin-logo">
           <Bomb className="logo-icon text-red" size={32} />
           <div>
-            <h1>BOMB DEFUSAL CHALLENGE</h1>
+            <h1>OVERCLOCKED</h1>
             <p className="subtitle">CONTROL ROOM & PROJECTOR COMMAND CENTER</p>
           </div>
         </div>
@@ -342,15 +348,61 @@ export default function AdminScreen() {
             </h2>
 
             <div className="form-group">
-              <label>Team / Player Name</label>
-              <input 
-                type="text" 
-                className="input-field" 
-                placeholder="e.g. Cyber Squad 404"
+              <label>Imported Team</label>
+              <select
+                className="input-field"
                 value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
+                onChange={(e) => {
+                  setTeamName(e.target.value);
+                  setManualTeamName('');
+                }}
+                disabled={teams.length === 0}
+              >
+                <option value="">{teams.length ? 'Select a team' : 'Import teams to begin'}</option>
+                {teams.map((team) => <option key={team} value={team}>{team}</option>)}
+              </select>
+              <label className="manual-team-label" htmlFor="manual-team-name">Or enter a team manually</label>
+              <input
+                id="manual-team-name"
+                type="text"
+                className="input-field"
+                placeholder="e.g. Cyber Squad 404"
+                value={manualTeamName}
+                onChange={(e) => {
+                  setManualTeamName(e.target.value);
+                  setTeamName('');
+                }}
               />
+              <label className="file-input-label">
+                Import teams CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleTeamsImport}
+                />
+              </label>
+              <div className="team-bank-list">
+                {teams.length === 0 ? (
+                  <div className="empty-state">No teams imported yet.</div>
+                ) : (
+                  teams.map((team) => (
+                    <div key={team} className="team-bank-item">
+                      <span>{team}</span>
+                      <button
+                        type="button"
+                        className="icon-btn text-red"
+                        onClick={() => handleRemoveTeam(team)}
+                        title={`Delete ${team}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
+
+            {importError && <div className="import-error" role="alert">{importError}</div>}
 
             <div className="form-row">
               <div className="form-group half">
@@ -469,13 +521,20 @@ export default function AdminScreen() {
               <h2 className="card-title">
                 <HelpCircle size={22} className="text-cyan" /> Questions Bank ({questions.length})
               </h2>
-              <button 
-                className="btn btn-outline-cyan btn-sm"
-                onClick={() => setQuestions(PRESET_QUESTIONS)}
-                title="Load sample tech festival questions"
-              >
-                <Sparkles size={16} /> Load Tech Preset
-              </button>
+              <div className="flex-gap">
+                <label className="btn btn-outline-cyan btn-sm file-button">
+                  Import CSV
+                  <input type="file" accept=".csv,text/csv" onChange={handleQuestionsImport} />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-outline-cyan btn-sm"
+                  onClick={handleLoadSampleQuestions}
+                  title="Load sample tech festival questions"
+                >
+                  <Sparkles size={16} /> Load Sample Questions
+                </button>
+              </div>
             </div>
 
             {/* Added Questions List */}
@@ -490,7 +549,9 @@ export default function AdminScreen() {
                       <div className="q-text">{q.question}</div>
                       <div className="q-meta">
                         <span className="badge badge-outline">{q.type.toUpperCase()}</span>
-                        <span className="q-answer">Answer: {q.correctAnswer}</span>
+                        <span className={`q-answer ${q.type === 'text' ? 'text-answer' : ''}`}>
+                          {q.type === 'text' ? 'Text Answer' : 'Answer'}: {q.correctAnswer}
+                        </span>
                       </div>
                     </div>
                     <div className="q-actions">
@@ -509,99 +570,6 @@ export default function AdminScreen() {
               )}
             </div>
 
-            {/* Add Question Button / Form */}
-            {!showAddQuestion ? (
-              <button 
-                className="btn btn-secondary width-full margin-top-sm"
-                onClick={() => setShowAddQuestion(true)}
-              >
-                <Plus size={18} /> Add New Question
-              </button>
-            ) : (
-              <form onSubmit={handleAddQuestion} className="sub-panel border-cyan margin-top-sm">
-                <div className="flex-between margin-bottom-xs">
-                  <h3 className="sub-title">New Question Details</h3>
-                  <button type="button" className="btn-close" onClick={() => setShowAddQuestion(false)}>×</button>
-                </div>
-
-                <div className="form-group">
-                  <label>Question Text</label>
-                  <input 
-                    type="text" 
-                    className="input-field" 
-                    placeholder="Enter question prompt..."
-                    value={qText}
-                    onChange={(e) => setQText(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Question Type</label>
-                  <div className="radio-toggle">
-                    <button 
-                      type="button" 
-                      className={`toggle-btn ${qType === 'mcq' ? 'active' : ''}`}
-                      onClick={() => setQType('mcq')}
-                    >
-                      Multiple Choice (MCQ)
-                    </button>
-                    <button 
-                      type="button" 
-                      className={`toggle-btn ${qType === 'text' ? 'active' : ''}`}
-                      onClick={() => setQType('text')}
-                    >
-                      Type-the-Answer
-                    </button>
-                  </div>
-                </div>
-
-                {qType === 'mcq' ? (
-                  <div className="form-group">
-                    <label>MCQ Options (Select the correct radio button)</label>
-                    {qOptions.map((opt, i) => (
-                      <div key={i} className="mcq-option-row">
-                        <input 
-                          type="radio" 
-                          name="correctMcq" 
-                          checked={qCorrectMcq === i}
-                          onChange={() => setQCorrectMcq(i)}
-                        />
-                        <input 
-                          type="text" 
-                          className="input-field" 
-                          placeholder={`Option ${i + 1}`}
-                          value={opt}
-                          onChange={(e) => {
-                            const updated = [...qOptions];
-                            updated[i] = e.target.value;
-                            setQOptions(updated);
-                          }}
-                          required
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="form-group">
-                    <label>Correct Answer Text (Case-insensitive)</label>
-                    <input 
-                      type="text" 
-                      className="input-field" 
-                      placeholder="e.g. 80 or TCP"
-                      value={qCorrectText}
-                      onChange={(e) => setQCorrectText(e.target.value)}
-                      required
-                    />
-                  </div>
-                )}
-
-                <div className="flex-gap margin-top-sm">
-                  <button type="submit" className="btn btn-cyan flex-1">Save Question</button>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowAddQuestion(false)}>Cancel</button>
-                </div>
-              </form>
-            )}
           </div>
         </div>
       )}
@@ -773,6 +741,10 @@ export default function AdminScreen() {
             </div>
 
             <div className="flex-gap">
+              <label className="btn btn-outline-cyan btn-sm file-button">
+                Import Teams CSV
+                <input type="file" accept=".csv,text/csv" onChange={handleTeamsImport} />
+              </label>
               <button className="btn btn-cyan" onClick={() => setActiveTab('setup')}>
                 <Plus size={18} /> Start Next Team Round
               </button>
@@ -783,6 +755,8 @@ export default function AdminScreen() {
               )}
             </div>
           </div>
+
+          {importError && <div className="import-error" role="alert">{importError}</div>}
 
           {leaderboard.length === 0 ? (
             <div className="empty-state margin-top-lg">

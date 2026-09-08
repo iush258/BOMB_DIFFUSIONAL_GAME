@@ -571,7 +571,7 @@ export default function BombScreen() {
             <div className="bomb-icon-glow">
               <Bomb size={64} className="text-red-light" />
             </div>
-            <h1 className="bomb-title-visible">BOMB DEFUSAL TERMINAL</h1>
+            <h1 className="bomb-title-visible">OVERCLOCKED</h1>
             <p className="bomb-subtitle-visible">TECH FEST COMPETITION PROP TERMINAL</p>
           </div>
 

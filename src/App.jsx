@@ -10,7 +10,7 @@ function HomeSelector() {
     <div className="home-selector-container">
       <div className="home-card glass-card text-center">
         <Bomb size={64} className="text-red margin-bottom-sm" />
-        <h1 className="home-title">BOMB DEFUSAL CHALLENGE</h1>
+        <h1 className="home-title">OVERCLOCKED</h1>
         <p className="home-subtitle">COLLEGE TECH FEST COMPETITION APP</p>
 
         <div className="routes-grid margin-top-lg">
