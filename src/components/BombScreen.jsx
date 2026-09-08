@@ -292,7 +292,7 @@ export default function BombScreen() {
   }, [stage, session?.status]);
 
   // Trigger Detonation sequence
-  const handleTriggerDetonation = async (reason = 'Wrong Attempt Exceeded') => {
+  const handleTriggerDetonation = async (reason = 'Wrong Attempt Exceeded', progressOverride = null) => {
     if (clockIntervalRef.current) clearInterval(clockIntervalRef.current);
     if (finalBeepTimeoutRef.current) clearTimeout(finalBeepTimeoutRef.current);
 
@@ -312,6 +312,7 @@ export default function BombScreen() {
     if (session) {
       const updated = {
         ...session,
+        ...(progressOverride ? { progress: progressOverride } : {}),
         status: 'detonated',
         result: 'detonated',
         endedAt: Date.now()
@@ -320,9 +321,9 @@ export default function BombScreen() {
 
       await pushData('leaderboard', {
         teamName: session.teamName,
-        questionsSolved: session.progress?.questionsSolved || 0,
+        questionsSolved: updated.progress?.questionsSolved || 0,
         totalQuestions: session.questions?.length || 0,
-        attemptsUsed: session.progress?.attemptsUsed || 0,
+        attemptsUsed: updated.progress?.attemptsUsed || 0,
         timeTakenSeconds: timeTaken,
         timerDurationSeconds: session.timerDurationSeconds,
         result: 'detonated',
@@ -332,7 +333,7 @@ export default function BombScreen() {
   };
 
   // Trigger Defuse sequence
-  const handleTriggerDefuse = async () => {
+  const handleTriggerDefuse = async (progressOverride = null) => {
     if (clockIntervalRef.current) clearInterval(clockIntervalRef.current);
     if (finalBeepTimeoutRef.current) clearTimeout(finalBeepTimeoutRef.current);
 
@@ -348,6 +349,7 @@ export default function BombScreen() {
     if (session) {
       const updated = {
         ...session,
+        ...(progressOverride ? { progress: progressOverride } : {}),
         status: 'defused',
         result: 'defused',
         endedAt: Date.now()
@@ -356,9 +358,9 @@ export default function BombScreen() {
 
       await pushData('leaderboard', {
         teamName: session.teamName,
-        questionsSolved: session.progress?.questionsSolved || 0,
+        questionsSolved: updated.progress?.questionsSolved || 0,
         totalQuestions: session.questions?.length || 0,
-        attemptsUsed: session.progress?.attemptsUsed || 0,
+        attemptsUsed: updated.progress?.attemptsUsed || 0,
         timeTakenSeconds: timeTaken,
         timerDurationSeconds: session.timerDurationSeconds,
         result: 'defused',
@@ -395,7 +397,7 @@ export default function BombScreen() {
     await writeData('currentSession/progress', updatedProgress);
 
     if (max > 0 && newAttempts >= max) {
-      handleTriggerDetonation('Max Strikes Exceeded');
+      handleTriggerDetonation('Max Strikes Exceeded', updatedProgress);
     }
   };
 
@@ -428,7 +430,7 @@ export default function BombScreen() {
         if (session.diffuseMode?.pin) {
           setCurrentQIndex(nextIndex);
         } else {
-          handleTriggerDefuse();
+          handleTriggerDefuse(updatedProgress);
         }
       } else {
         setCurrentQIndex(nextIndex);
@@ -471,7 +473,7 @@ export default function BombScreen() {
         if (session.diffuseMode?.pin) {
           setCurrentQIndex(nextIndex);
         } else {
-          handleTriggerDefuse();
+          handleTriggerDefuse(updatedProgress);
         }
       } else {
         setCurrentQIndex(nextIndex);

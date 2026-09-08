@@ -22,7 +22,8 @@ import {
   Volume2,
   Tv,
   Eye,
-  EyeOff
+  EyeOff,
+  Lightbulb
 } from 'lucide-react';
 
 const PRESET_QUESTIONS = [
@@ -280,6 +281,9 @@ export default function AdminScreen() {
     const s = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
+
+  const currentQuestionIndex = session?.progress?.currentQuestionIndex || 0;
+  const currentQuestion = session?.questions?.[currentQuestionIndex];
 
   return (
     <div className="admin-container">
@@ -720,6 +724,36 @@ export default function AdminScreen() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="glass-card current-challenge-card">
+                <div className="card-header">
+                  <HelpCircle size={20} className="text-cyan" /> CURRENT CHALLENGE
+                </div>
+
+                <div className="challenge-grid">
+                  <div className="challenge-panel question-panel">
+                    <span className="challenge-label">
+                      {currentQuestion ? `QUESTION ${currentQuestionIndex + 1} OF ${session.questions.length}` : 'QUESTION STATUS'}
+                    </span>
+                    <div className="challenge-question">
+                      {currentQuestion
+                        ? currentQuestion.question
+                        : session.diffuseMode?.questions
+                          ? 'All questions completed'
+                          : 'Questions mode is disabled'}
+                    </div>
+                  </div>
+
+                  {session.diffuseMode?.pin && (
+                    <div className="challenge-panel hint-panel">
+                      <span className="challenge-label"><Lightbulb size={16} /> PIN HINT</span>
+                      <div className="challenge-hint">
+                        {session.pin?.hint || 'No PIN hint configured'}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

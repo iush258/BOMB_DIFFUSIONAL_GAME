@@ -383,6 +383,54 @@
   to { opacity: 1; transform: scale(1.02); text-shadow: 0 0 32px var(--color-red); }
 }
 
+.current-challenge-card {
+  border-color: rgba(0, 240, 255, 0.24);
+}
+.challenge-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.6fr);
+  gap: 16px;
+}
+.challenge-panel {
+  min-width: 0;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+.challenge-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-family: var(--font-tech);
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+.challenge-question {
+  margin-top: 10px;
+  color: var(--text-main);
+  font-family: var(--font-tech);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.hint-panel {
+  border-color: rgba(255, 183, 0, 0.3);
+}
+.hint-panel .challenge-label {
+  color: var(--color-gold);
+}
+.challenge-hint {
+  margin-top: 10px;
+  color: var(--color-gold);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+@media (max-width: 800px) {
+  .challenge-grid { grid-template-columns: 1fr; }
+}
+
 .metric-row {
   display: flex;
   justify-content: space-between;
