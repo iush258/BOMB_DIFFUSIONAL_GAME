@@ -37,7 +37,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<HomeSelector />} />
-      <Route path="/admin" element={<AdminScreen />} />
+      <Route path="/admin" element={<AdminScreen view="setup" />} />
+      <Route path="/admin/dashboard" element={<AdminScreen view="dashboard" />} />
+      <Route path="/admin/leaderboard" element={<AdminScreen view="leaderboard" />} />
       <Route path="/bomb" element={<BombScreen />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

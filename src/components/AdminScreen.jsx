@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { subscribeToPath, writeData, pushData, readDataOnce, isFirebaseConfigured } from '../firebase';
 import { importQuestionsCsv, importTeamsCsv } from '../utils/csvImport';
 import { 
@@ -50,7 +51,8 @@ const SAMPLE_QUESTIONS = [
   }
 ];
 
-export default function AdminScreen() {
+export default function AdminScreen({ view = 'setup' }) {
+  const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -113,7 +115,7 @@ export default function AdminScreen() {
   const [showAdminPin, setShowAdminPin] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState('setup'); // 'setup', 'dashboard', 'leaderboard'
+  const activeTab = view;
 
   // Subscribe to currentSession and leaderboard from Firebase
   useEffect(() => {
@@ -219,7 +221,7 @@ export default function AdminScreen() {
 
     await writeData('currentSession', newSession);
     setShowAdminPin(false);
-    setActiveTab('dashboard');
+    navigate('/admin/dashboard');
   };
 
   const handleForceDefuse = async () => {
@@ -271,7 +273,7 @@ export default function AdminScreen() {
   const handleResetSession = async () => {
     if (window.confirm('Reset current session? This will allow creating a new round.')) {
       await writeData('currentSession', null);
-      setActiveTab('setup');
+      navigate('/admin');
     }
   };
 
@@ -279,6 +281,24 @@ export default function AdminScreen() {
     if (window.confirm('Are you sure you want to CLEAR the entire leaderboard history?')) {
       await writeData('leaderboard', []);
     }
+  };
+
+  const handleDeclareWinners = async () => {
+    if (leaderboard.length < 3) {
+      alert('At least three completed team results are required to declare winners.');
+      return;
+    }
+
+    if (!window.confirm('Declare the current top three teams as the event winners?')) return;
+
+    const declaredAt = Date.now();
+    const updatedLeaderboard = leaderboard.map((row, index) => ({
+      ...row,
+      winnerRank: index < 3 ? index + 1 : null,
+      winnersDeclaredAt: index < 3 ? declaredAt : null
+    }));
+
+    await writeData('leaderboard', updatedLeaderboard);
   };
 
   const formatTime = (totalSeconds) => {
@@ -305,27 +325,18 @@ export default function AdminScreen() {
 
         {/* Navigation Tabs */}
         <nav className="admin-nav">
-          <button 
-            className={`nav-btn ${activeTab === 'setup' ? 'active' : ''}`}
-            onClick={() => setActiveTab('setup')}
-          >
+          <Link to="/admin" className={`nav-btn ${activeTab === 'setup' ? 'active' : ''}`}>
             <Play size={18} /> Setup Round
-          </button>
-          <button 
-            className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
+          </Link>
+          <Link to="/admin/dashboard" className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}>
             <Tv size={18} /> Live Dashboard
             {session && session.status === 'active' && (
               <span className="live-pulse">ARMED</span>
             )}
-          </button>
-          <button 
-            className={`nav-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('leaderboard')}
-          >
+          </Link>
+          <Link to="/admin/leaderboard" className={`nav-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}>
             <Trophy size={18} /> Leaderboard ({leaderboard.length})
-          </button>
+          </Link>
         </nav>
       </header>
 
@@ -513,6 +524,13 @@ export default function AdminScreen() {
             >
               <Flame size={24} /> GENERATE JOIN CODE & ARM BOMB
             </button>
+            <button
+              className="btn btn-outline-gold width-full margin-top-sm"
+              onClick={handleDeclareWinners}
+              disabled={leaderboard.length < 3}
+            >
+              <Trophy size={18} /> DECLARE TOP 3 TEAMS AS WINNERS
+            </button>
           </div>
 
           {/* Questions Builder Card */}
@@ -582,7 +600,7 @@ export default function AdminScreen() {
               <ShieldAlert size={64} className="text-muted margin-bottom-sm" />
               <h2>No Active Game Session</h2>
               <p>Go to the <strong>Setup Round</strong> tab to configure and generate a join code for the next competing team.</p>
-              <button className="btn btn-cyan margin-top-md" onClick={() => setActiveTab('setup')}>
+              <button className="btn btn-cyan margin-top-md" onClick={() => navigate('/admin')}>
                 Go to Setup Panel
               </button>
             </div>
@@ -724,6 +742,50 @@ export default function AdminScreen() {
                   )}
                 </div>
               </div>
+
+              <div className="glass-card live-leaderboard-panel">
+                <div className="flex-between margin-bottom-sm">
+                  <div className="card-header">
+                    <Trophy size={20} className="text-gold" /> LIVE LEADERBOARD
+                  </div>
+                  <Link to="/admin/leaderboard" className="btn btn-outline-cyan btn-sm">
+                    Full Leaderboard
+                  </Link>
+                </div>
+
+                {leaderboard.length === 0 ? (
+                  <div className="empty-state">No completed rounds yet.</div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="leaderboard-table">
+                      <thead>
+                        <tr>
+                          <th>RANK</th>
+                          <th>TEAM NAME</th>
+                          <th>RESULT</th>
+                          <th>TIME TAKEN</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {leaderboard.map((row, idx) => (
+                          <tr key={row.id || idx} className={`rank-row ${idx < 3 ? 'top-rank' : ''}`}>
+                            <td className="rank-cell">
+                              {row.winnerRank ? `WINNER ${row.winnerRank}` : `#${idx + 1}`}
+                            </td>
+                            <td className="team-cell">{row.teamName}</td>
+                            <td>
+                              <span className={`result-tag ${row.result}`}>
+                                {row.result === 'defused' ? 'DEFUSED' : 'DETONATED'}
+                              </span>
+                            </td>
+                            <td className="mono-font highlight">{formatTime(row.timeTakenSeconds)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -745,7 +807,7 @@ export default function AdminScreen() {
                 Import Teams CSV
                 <input type="file" accept=".csv,text/csv" onChange={handleTeamsImport} />
               </label>
-              <button className="btn btn-cyan" onClick={() => setActiveTab('setup')}>
+              <button className="btn btn-cyan" onClick={() => navigate('/admin')}>
                 <Plus size={18} /> Start Next Team Round
               </button>
               {leaderboard.length > 0 && (
@@ -782,7 +844,7 @@ export default function AdminScreen() {
                   {leaderboard.map((row, idx) => (
                     <tr key={row.id || idx} className={`rank-row ${idx === 0 ? 'top-rank' : ''}`}>
                       <td className="rank-cell">
-                        {idx === 0 ? '🥇 1st' : idx === 1 ? '🥈 2nd' : idx === 2 ? '🥉 3rd' : `#${idx + 1}`}
+                        {row.winnerRank ? `WINNER ${row.winnerRank}` : `#${idx + 1}`}
                       </td>
                       <td className="team-cell">{row.teamName}</td>
                       <td>

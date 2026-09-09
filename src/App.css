@@ -114,6 +114,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  text-decoration: none;
 }
 .nav-btn:hover {
   background: rgba(255, 255, 255, 0.1);
@@ -437,6 +438,9 @@
 .current-challenge-card {
   border-color: rgba(0, 240, 255, 0.24);
 }
+.live-leaderboard-panel {
+  border-color: rgba(255, 183, 0, 0.28);
+}
 .challenge-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.6fr);
@@ -532,6 +536,18 @@
 }
 .result-tag.defused { background: rgba(0, 255, 102, 0.2); color: var(--color-green); }
 .result-tag.detonated { background: rgba(255, 46, 76, 0.2); color: var(--color-red); }
+.btn-outline-gold {
+  background: transparent;
+  border: 1px solid var(--color-gold);
+  color: var(--color-gold);
+}
+.btn-outline-gold:hover:not(:disabled) {
+  background: rgba(255, 183, 0, 0.14);
+}
+.btn-outline-gold:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 
 /* =========================================================
