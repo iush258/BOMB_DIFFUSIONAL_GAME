@@ -454,6 +454,76 @@
 .live-leaderboard-panel {
   border-color: rgba(255, 183, 0, 0.28);
 }
+.winners-panel {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 183, 0, 0.55);
+  box-shadow: 0 0 36px rgba(255, 183, 0, 0.16);
+  animation: winners-panel-enter 0.7s ease-out both;
+}
+.winners-panel > *:not(.winner-celebration) {
+  position: relative;
+  z-index: 1;
+}
+.winner-celebration {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.winner-particle {
+  position: absolute;
+  top: -12px;
+  left: var(--particle-left);
+  width: 7px;
+  height: 13px;
+  background: var(--particle-color);
+  box-shadow: 0 0 10px var(--particle-color);
+  opacity: 0;
+  transform: rotate(20deg);
+  animation: winner-confetti var(--particle-duration) var(--particle-delay) ease-out infinite;
+}
+@keyframes winners-panel-enter {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes winner-confetti {
+  0% { opacity: 0; transform: translate3d(0, -12px, 0) rotate(20deg); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(18px, 420px, 0) rotate(560deg); }
+}
+.live-leaderboard-panel .table-responsive {
+  overflow-x: auto;
+}
+.live-leaderboard-panel .leaderboard-table {
+  table-layout: fixed;
+  min-width: 0;
+}
+.live-leaderboard-panel .leaderboard-table th,
+.live-leaderboard-panel .leaderboard-table td {
+  padding: 10px 8px;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+.live-leaderboard-panel .leaderboard-table th:nth-child(1),
+.live-leaderboard-panel .leaderboard-table td:nth-child(1) { width: 18%; }
+.live-leaderboard-panel .leaderboard-table th:nth-child(2),
+.live-leaderboard-panel .leaderboard-table td:nth-child(2) { width: 27%; }
+.live-leaderboard-panel .leaderboard-table th:nth-child(3),
+.live-leaderboard-panel .leaderboard-table td:nth-child(3) { width: 20%; }
+.live-leaderboard-panel .leaderboard-table th:nth-child(4),
+.live-leaderboard-panel .leaderboard-table td:nth-child(4) { width: 17%; }
+.live-leaderboard-panel .leaderboard-table th:nth-child(5),
+.live-leaderboard-panel .leaderboard-table td:nth-child(5) { width: 18%; }
+.live-leaderboard-panel .team-cell {
+  word-break: break-word;
+}
+.live-leaderboard-panel .result-tag {
+  display: inline-block;
+  padding: 3px 5px;
+  font-size: 0.68rem;
+  white-space: normal;
+}
 .challenge-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.6fr);
@@ -483,6 +553,28 @@
   font-weight: 700;
   line-height: 1.35;
 }
+.challenge-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.challenge-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--text-main);
+  background: rgba(0, 240, 255, 0.06);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 6px;
+}
+.challenge-option-key {
+  color: var(--color-cyan);
+  font-family: var(--font-tech);
+  font-weight: 700;
+}
 .hint-panel {
   border-color: rgba(255, 183, 0, 0.3);
 }
@@ -497,6 +589,7 @@
 }
 @media (max-width: 800px) {
   .challenge-grid { grid-template-columns: 1fr; }
+  .challenge-options { grid-template-columns: 1fr; }
 }
 @media (max-width: 1100px) {
   .dashboard-content {

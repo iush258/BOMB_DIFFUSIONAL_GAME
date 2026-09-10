@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { subscribeToPath, writeData, pushData, readDataOnce, isFirebaseConfigured } from '../firebase';
 import { importQuestionsCsv, importTeamsCsv } from '../utils/csvImport';
 import { 
@@ -22,6 +22,7 @@ import {
   ArrowDown,
   Sparkles,
   Volume2,
+  Pause,
   Tv,
   Eye,
   EyeOff,
@@ -51,10 +52,21 @@ const SAMPLE_QUESTIONS = [
   }
 ];
 
+const CELEBRATION_PARTICLES = Array.from({ length: 28 }, (_, index) => ({
+  id: index,
+  left: `${(index * 37) % 100}%`,
+  delay: `${(index % 7) * 0.18}s`,
+  duration: `${2.8 + (index % 5) * 0.35}s`,
+  color: ['#00f0ff', '#ffb700', '#ff2e4c', '#00ff66'][index % 4]
+}));
+
 export default function AdminScreen({ view = 'setup' }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [session, setSession] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [winners, setWinners] = useState([]);
+  const [winnerDisplay, setWinnerDisplay] = useState(false);
   const [teams, setTeams] = useState([]);
   const [importError, setImportError] = useState('');
   
@@ -116,6 +128,9 @@ export default function AdminScreen({ view = 'setup' }) {
 
   // Tab State
   const activeTab = view;
+  const showWinnersOnDashboard = activeTab === 'dashboard' && (
+    new URLSearchParams(location.search).get('view') === 'winners' || winnerDisplay
+  );
 
   // Subscribe to currentSession and leaderboard from Firebase
   useEffect(() => {
@@ -132,15 +147,34 @@ export default function AdminScreen({ view = 'setup' }) {
       list.sort((a, b) => {
         if (a.result === 'defused' && b.result !== 'defused') return -1;
         if (a.result !== 'defused' && b.result === 'defused') return 1;
-        if (a.timeTakenSeconds !== b.timeTakenSeconds) return a.timeTakenSeconds - b.timeTakenSeconds;
+        if (a.timeTakenSeconds !== b.timeTakenSeconds) {
+          const bothDetonated = a.result === 'detonated' && b.result === 'detonated';
+          return bothDetonated
+            ? b.timeTakenSeconds - a.timeTakenSeconds
+            : a.timeTakenSeconds - b.timeTakenSeconds;
+        }
         return a.attemptsUsed - b.attemptsUsed;
       });
       setLeaderboard(list);
     });
 
+    const unsubWinners = subscribeToPath('winners', (val) => {
+      if (!val) {
+        setWinners([]);
+        return;
+      }
+      setWinners(Array.isArray(val) ? val : Object.values(val));
+    });
+
+    const unsubWinnerDisplay = subscribeToPath('winnerDisplay', (val) => {
+      setWinnerDisplay(Boolean(val));
+    });
+
     return () => {
       unsubSession();
       unsubLeaderboard();
+      unsubWinners();
+      unsubWinnerDisplay();
     };
   }, []);
 
@@ -220,12 +254,15 @@ export default function AdminScreen({ view = 'setup' }) {
     };
 
     await writeData('currentSession', newSession);
+    await writeData('winnerDisplay', false);
     setShowAdminPin(false);
-    navigate('/admin/dashboard');
   };
 
   const handleForceDefuse = async () => {
-    if (!session) return;
+    if (!session) {
+      alert('Configure a round before forcing defuse.');
+      return;
+    }
     const timeTaken = session.timerDurationSeconds - session.timeRemainingSeconds;
     const updated = {
       ...session,
@@ -248,7 +285,10 @@ export default function AdminScreen({ view = 'setup' }) {
   };
 
   const handleForceDetonate = async () => {
-    if (!session) return;
+    if (!session) {
+      alert('Configure a round before forcing detonation.');
+      return;
+    }
     const timeTaken = session.timerDurationSeconds - session.timeRemainingSeconds;
     const updated = {
       ...session,
@@ -271,10 +311,22 @@ export default function AdminScreen({ view = 'setup' }) {
   };
 
   const handleResetSession = async () => {
-    if (window.confirm('Reset current session? This will allow creating a new round.')) {
+    if (!session || window.confirm('Reset current session? This will allow creating a new round.')) {
       await writeData('currentSession', null);
       navigate('/admin');
     }
+  };
+
+  const handlePauseRound = async () => {
+    if (!session) {
+      alert('Configure a round before pausing it.');
+      return;
+    }
+
+    await writeData('currentSession', {
+      ...session,
+      status: session.status === 'paused' ? 'active' : 'paused'
+    });
   };
 
   const handleClearLeaderboard = async () => {
@@ -298,7 +350,14 @@ export default function AdminScreen({ view = 'setup' }) {
       winnersDeclaredAt: index < 3 ? declaredAt : null
     }));
 
-    await writeData('leaderboard', updatedLeaderboard);
+    await writeData('winners', updatedLeaderboard.slice(0, 3));
+    await writeData('winnerDisplay', true);
+    await writeData('leaderboard', []);
+    await writeData('currentSession', null);
+    setTeamName('');
+    setManualTeamName('');
+    alert('Winners declared. The complete game has been reset for a fresh round.');
+    navigate('/admin');
   };
 
   const formatTime = (totalSeconds) => {
@@ -308,8 +367,16 @@ export default function AdminScreen({ view = 'setup' }) {
     return `${m}:${s}`;
   };
 
+  const formatQuestionScore = (row) => (
+    row.totalQuestions > 0 ? `${row.questionsSolved || 0} / ${row.totalQuestions}` : 'PIN ONLY'
+  );
+
   const currentQuestionIndex = session?.progress?.currentQuestionIndex || 0;
   const currentQuestion = session?.questions?.[currentQuestionIndex];
+  const isPinChallengeActive = Boolean(
+    session?.diffuseMode?.pin &&
+    (!session?.diffuseMode?.questions || currentQuestionIndex >= (session?.questions?.length || 0))
+  );
 
   return (
     <div className="admin-container">
@@ -324,11 +391,11 @@ export default function AdminScreen({ view = 'setup' }) {
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="admin-nav">
+        {activeTab !== 'dashboard' && <nav className="admin-nav">
           <Link to="/admin" className={`nav-btn ${activeTab === 'setup' ? 'active' : ''}`}>
             <Play size={18} /> Setup Round
           </Link>
-          <Link to="/admin/dashboard" className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}>
+          <Link to="/admin/dashboard" target="_blank" rel="noopener noreferrer" className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}>
             <Tv size={18} /> Live Dashboard
             {session && session.status === 'active' && (
               <span className="live-pulse">ARMED</span>
@@ -337,7 +404,10 @@ export default function AdminScreen({ view = 'setup' }) {
           <Link to="/admin/leaderboard" className={`nav-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}>
             <Trophy size={18} /> Leaderboard ({leaderboard.length})
           </Link>
-        </nav>
+          <Link to="/admin/winners" className={`nav-btn ${activeTab === 'winners' ? 'active' : ''}`}>
+            <Trophy size={18} /> Winners
+          </Link>
+        </nav>}
       </header>
 
       {!isFirebaseConfigured && (
@@ -531,6 +601,30 @@ export default function AdminScreen({ view = 'setup' }) {
             >
               <Trophy size={18} /> DECLARE TOP 3 TEAMS AS WINNERS
             </button>
+            <button
+              className="btn btn-outline-cyan width-full margin-top-sm"
+              onClick={() => navigate('/admin/dashboard?view=winners')}
+            >
+              <Trophy size={18} /> VIEW WINNERS ON DASHBOARD
+            </button>
+
+            <div className="sub-panel border-cyan margin-top-md">
+              <h3 className="sub-title"><ShieldAlert size={18} /> Admin Host Controls</h3>
+              <div className="flex-gap margin-top-xs">
+                <button className="btn btn-sm btn-secondary" onClick={handlePauseRound}>
+                  <Pause size={16} /> {session?.status === 'paused' ? 'Resume Round' : 'Pause Round'}
+                </button>
+                <button className="btn btn-sm btn-outline-green" onClick={handleForceDefuse}>
+                  <CheckCircle2 size={16} /> Force Defuse
+                </button>
+                <button className="btn btn-sm btn-outline-red" onClick={handleForceDetonate}>
+                  <XCircle size={16} /> Force Detonate
+                </button>
+                <button className="btn btn-sm btn-secondary" onClick={handleResetSession}>
+                  <RotateCcw size={16} /> Reset Round
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Questions Builder Card */}
@@ -595,14 +689,74 @@ export default function AdminScreen({ view = 'setup' }) {
       {/* TAB 2: LIVE DASHBOARD */}
       {activeTab === 'dashboard' && (
         <div className="dashboard-grid">
-          {!session ? (
+          {showWinnersOnDashboard ? (
+            <div className="leaderboard-panel glass-card winners-panel">
+              <div className="winner-celebration" aria-hidden="true">
+                {CELEBRATION_PARTICLES.map((particle) => (
+                  <span
+                    key={particle.id}
+                    className="winner-particle"
+                    style={{
+                      '--particle-left': particle.left,
+                      '--particle-delay': particle.delay,
+                      '--particle-duration': particle.duration,
+                      '--particle-color': particle.color
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex-between margin-bottom-md">
+                <div>
+                  <h2 className="card-title">
+                    <Trophy size={26} className="text-gold" /> EVENT WINNERS
+                  </h2>
+                  <p className="subtitle">Top three teams from the official leaderboard</p>
+                </div>
+                <button className="btn btn-outline-cyan" onClick={() => navigate('/admin')}>
+                  <Play size={18} /> Back to Setup Round
+                </button>
+              </div>
+
+              {winners.length < 3 ? (
+                <div className="empty-state margin-top-lg">
+                  <Trophy size={48} className="text-muted margin-bottom-sm" />
+                  <h3>Top 3 Winners Not Available Yet</h3>
+                  <p>Complete at least three team rounds, then declare the winners from Setup Round.</p>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="leaderboard-table winners-table">
+                    <thead>
+                      <tr>
+                        <th>PLACE</th>
+                        <th>TEAM NAME</th>
+                        <th>RESULT</th>
+                        <th>QUESTIONS SOLVED</th>
+                        <th>ATTEMPTS</th>
+                        <th>TIME TAKEN</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {winners.slice(0, 3).map((row, idx) => (
+                        <tr key={row.id || idx} className="rank-row top-rank">
+                          <td className="rank-cell">{row.winnerRank ? `WINNER ${row.winnerRank}` : `#${idx + 1}`}</td>
+                          <td className="team-cell">{row.teamName}</td>
+                          <td><span className={`result-tag ${row.result}`}>{row.result === 'defused' ? 'DEFUSED' : 'DETONATED'}</span></td>
+                          <td>{formatQuestionScore(row)}</td>
+                          <td className="text-red-light">{row.attemptsUsed || 0}</td>
+                          <td className="mono-font highlight">{formatTime(row.timeTakenSeconds)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : !session ? (
             <div className="glass-card empty-dashboard">
               <ShieldAlert size={64} className="text-muted margin-bottom-sm" />
               <h2>No Active Game Session</h2>
               <p>Go to the <strong>Setup Round</strong> tab to configure and generate a join code for the next competing team.</p>
-              <button className="btn btn-cyan margin-top-md" onClick={() => navigate('/admin')}>
-                Go to Setup Panel
-              </button>
             </div>
           ) : (
             <div className="dashboard-content">
@@ -621,6 +775,7 @@ export default function AdminScreen({ view = 'setup' }) {
                     {session.status === 'active' && '🔴 BOMB ARMED & TICKING'}
                     {session.status === 'defused' && '🟢 DEFUSED SUCCESSFUL'}
                     {session.status === 'detonated' && '💥 BOMB DETONATED'}
+                    {session.status === 'paused' && '⏸ ROUND PAUSED'}
                   </div>
                 </div>
               </div>
@@ -687,33 +842,10 @@ export default function AdminScreen({ view = 'setup' }) {
                     </div>
                   )}
 
-                  {/* Override Controls */}
-                  <div className="admin-overrides margin-top-md">
-                    <span className="section-label">ADMIN HOST OVERRIDES</span>
-                    <div className="flex-gap margin-top-xs">
-                      <button 
-                        className="btn btn-sm btn-outline-green" 
-                        onClick={handleForceDefuse}
-                        disabled={session.status === 'defused' || session.status === 'detonated'}
-                      >
-                        <CheckCircle2 size={16} /> Force Defuse
-                      </button>
-                      <button 
-                        className="btn btn-sm btn-outline-red" 
-                        onClick={handleForceDetonate}
-                        disabled={session.status === 'defused' || session.status === 'detonated'}
-                      >
-                        <XCircle size={16} /> Force Detonate
-                      </button>
-                      <button className="btn btn-sm btn-secondary" onClick={handleResetSession}>
-                        <RotateCcw size={16} /> End & Reset
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              <div className="glass-card current-challenge-card">
+              {session.status !== 'waiting_for_join' && <div className="glass-card current-challenge-card">
                 <div className="card-header">
                   <HelpCircle size={20} className="text-cyan" /> CURRENT CHALLENGE
                 </div>
@@ -721,15 +853,33 @@ export default function AdminScreen({ view = 'setup' }) {
                 <div className="challenge-grid">
                   <div className="challenge-panel question-panel">
                     <span className="challenge-label">
-                      {currentQuestion ? `QUESTION ${currentQuestionIndex + 1} OF ${session.questions.length}` : 'QUESTION STATUS'}
+                      {session.status === 'waiting_for_join'
+                        ? 'UPCOMING CHALLENGE'
+                        : isPinChallengeActive
+                        ? 'FINAL CHALLENGE'
+                        : currentQuestion
+                          ? `QUESTION ${currentQuestionIndex + 1} OF ${session.questions.length}`
+                          : 'QUESTION STATUS'}
                     </span>
                     <div className="challenge-question">
-                      {currentQuestion
+                      {isPinChallengeActive
+                        ? 'ENTER DEFUSAL PIN CODE'
+                        : currentQuestion
                         ? currentQuestion.question
                         : session.diffuseMode?.questions
                           ? 'All questions completed'
                           : 'Questions mode is disabled'}
                     </div>
+                    {currentQuestion?.type === 'mcq' && currentQuestion.options?.length > 0 && (
+                      <div className="challenge-options">
+                        {currentQuestion.options.map((option, index) => (
+                          <div key={`${option}-${index}`} className="challenge-option">
+                            <span className="challenge-option-key">{String.fromCharCode(65 + index)}</span>
+                            <span>{option}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {session.diffuseMode?.pin && (
@@ -741,16 +891,13 @@ export default function AdminScreen({ view = 'setup' }) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               <div className="glass-card live-leaderboard-panel">
                 <div className="flex-between margin-bottom-sm">
                   <div className="card-header">
                     <Trophy size={20} className="text-gold" /> LIVE LEADERBOARD
                   </div>
-                  <Link to="/admin/leaderboard" className="btn btn-outline-cyan btn-sm">
-                    Full Leaderboard
-                  </Link>
                 </div>
 
                 {leaderboard.length === 0 ? (
@@ -763,6 +910,7 @@ export default function AdminScreen({ view = 'setup' }) {
                           <th>RANK</th>
                           <th>TEAM NAME</th>
                           <th>RESULT</th>
+                          <th>ATTEMPTS</th>
                           <th>TIME TAKEN</th>
                         </tr>
                       </thead>
@@ -778,6 +926,7 @@ export default function AdminScreen({ view = 'setup' }) {
                                 {row.result === 'defused' ? 'DEFUSED' : 'DETONATED'}
                               </span>
                             </td>
+                            <td className="text-red-light">{row.attemptsUsed || 0}</td>
                             <td className="mono-font highlight">{formatTime(row.timeTakenSeconds)}</td>
                           </tr>
                         ))}
@@ -810,11 +959,9 @@ export default function AdminScreen({ view = 'setup' }) {
               <button className="btn btn-cyan" onClick={() => navigate('/admin')}>
                 <Plus size={18} /> Start Next Team Round
               </button>
-              {leaderboard.length > 0 && (
-                <button className="btn btn-outline-red btn-sm" onClick={handleClearLeaderboard}>
-                  <Trash2 size={16} /> Clear History
-                </button>
-              )}
+              <button className="btn btn-outline-red btn-sm" onClick={handleClearLeaderboard}>
+                <Trash2 size={16} /> Clear History
+              </button>
             </div>
           </div>
 
@@ -852,12 +999,78 @@ export default function AdminScreen({ view = 'setup' }) {
                           {row.result === 'defused' ? 'DEFUSED' : 'DETONATED'}
                         </span>
                       </td>
-                      <td>{row.questionsSolved} / {row.totalQuestions || '-'}</td>
+                      <td>{formatQuestionScore(row)}</td>
                       <td className="text-red-light">{row.attemptsUsed}</td>
                       <td className="mono-font highlight">{formatTime(row.timeTakenSeconds)}</td>
                       <td className="text-muted text-sm">
                         {row.timestamp ? new Date(row.timestamp).toLocaleTimeString() : '-'}
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: WINNERS */}
+      {activeTab === 'winners' && (
+        <div className="leaderboard-panel glass-card winners-panel">
+          <div className="winner-celebration" aria-hidden="true">
+            {CELEBRATION_PARTICLES.map((particle) => (
+              <span
+                key={particle.id}
+                className="winner-particle"
+                style={{
+                  '--particle-left': particle.left,
+                  '--particle-delay': particle.delay,
+                  '--particle-duration': particle.duration,
+                  '--particle-color': particle.color
+                }}
+              />
+            ))}
+          </div>
+          <div className="flex-between margin-bottom-md">
+            <div>
+              <h2 className="card-title">
+                <Trophy size={26} className="text-gold" /> EVENT WINNERS
+              </h2>
+              <p className="subtitle">Top three teams from the official leaderboard</p>
+            </div>
+            <button className="btn btn-outline-cyan" onClick={() => navigate('/admin')}>
+              <Play size={18} /> Back to Setup Round
+            </button>
+          </div>
+
+          {winners.length < 3 ? (
+            <div className="empty-state margin-top-lg">
+              <Trophy size={48} className="text-muted margin-bottom-sm" />
+              <h3>Top 3 Winners Not Available Yet</h3>
+              <p>Complete at least three team rounds, then declare the winners from Setup Round.</p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="leaderboard-table winners-table">
+                <thead>
+                  <tr>
+                    <th>PLACE</th>
+                    <th>TEAM NAME</th>
+                    <th>RESULT</th>
+                    <th>QUESTIONS SOLVED</th>
+                    <th>ATTEMPTS</th>
+                    <th>TIME TAKEN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {winners.slice(0, 3).map((row, idx) => (
+                    <tr key={row.id || idx} className="rank-row top-rank">
+                      <td className="rank-cell">{row.winnerRank ? `WINNER ${row.winnerRank}` : `#${idx + 1}`}</td>
+                      <td className="team-cell">{row.teamName}</td>
+                      <td><span className={`result-tag ${row.result}`}>{row.result === 'defused' ? 'DEFUSED' : 'DETONATED'}</span></td>
+                      <td>{formatQuestionScore(row)}</td>
+                      <td className="text-red-light">{row.attemptsUsed || 0}</td>
+                      <td className="mono-font highlight">{formatTime(row.timeTakenSeconds)}</td>
                     </tr>
                   ))}
                 </tbody>
